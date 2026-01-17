@@ -156,6 +156,16 @@ All AI output is subject to:
 
 This prevents AI-induced canon collapse.
 
+### LLM Backends
+
+PURGE supports optional LLM backends through the VerseMind abstraction layer.
+Local execution via experimental backends (such as Ollama) may be used for
+offline or research-oriented workflows.
+
+No LLM backend is required to run the engine, and all AI-generated proposals
+remain subject to human approval and formal validation.
+
+
 ---
 
 ## Integrity, Analytics, and Risk

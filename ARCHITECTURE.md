@@ -244,6 +244,8 @@ VerseMind:
 * Proposes structured changes
 * Provides confidence and rationale
 
+Experimental local LLM execution (e.g., via Ollama) is supported through backend adapters but is not required for engine operation.
+
 It **cannot** directly modify canon.
 
 
@@ -256,6 +258,19 @@ All AI proposals must be:
 3. Validated against rules
 
 This prevents AI-driven canon collapse.
+
+
+### 9.3 LLM Backend Abstraction
+
+VerseMind does not depend on any specific large language model or execution runtime.
+All LLM interaction occurs through backend adapters that conform to VerseMind’s
+proposal schema and validation requirements.
+
+Local and remote LLM backends are treated as interchangeable execution layers.
+Experimental backends may be introduced without altering canon logic, rule enforcement,
+or validation semantics.
+
+This design ensures that AI integration remains optional, inspectable, and replaceable.
 
 
 ## 10. Persistence and Snapshots

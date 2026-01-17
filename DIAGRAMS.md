@@ -31,6 +31,10 @@ graph TD
     VerseMind --> Intent
     VerseMind --> Schema
     VerseMind --> Prompt
+    VerseMind --> LLMBackend
+
+    LLMBackend --> Ollama
+
 
     Analytics --> Canon
     Telemetry --> Canon
@@ -55,7 +59,9 @@ are proposed, validated, and applied.
 ```mermaid
 flowchart TD
     Intent[Human or AI Intent]
-        --> Proposal[Structured Proposal]
+    -->|Optional| LLM[LLM Backend]
+    --> Proposal[Structured Proposal]
+
 
     Proposal --> Validation[Rule Validation]
 
