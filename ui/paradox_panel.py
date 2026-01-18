@@ -1,16 +1,22 @@
 import streamlit as st
-from core.paradox import detect_paradoxes
-from core.canon import get_canon
+from core.runtime import get_canon
+
 
 def render():
-    st.markdown("### Paradox Detector")
-    st.caption("Logical inconsistencies")
-
     canon = get_canon()
-    paradoxes = detect_paradoxes(canon)
+
+    st.markdown("### Paradox Inspector")
+    st.caption("Detected contradictions in canon state")
+
+    paradoxes = canon.detect_paradoxes()
 
     if not paradoxes:
-        st.success("No paradoxes detected")
-    else:
-        st.warning(f"{len(paradoxes)} paradoxes found")
-        st.json(paradoxes)
+        st.success("No paradoxes detected.")
+        return
+
+    st.error(f"{len(paradoxes)} paradox(es) detected")
+
+    for p in paradoxes:
+        with st.expander(f"⚠️ {p['rule_id']}"):
+            st.write(p["message"])
+            st.caption(f"Severity: {p['severity']}")

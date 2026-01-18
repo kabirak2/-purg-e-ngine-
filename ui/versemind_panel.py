@@ -1,6 +1,6 @@
 import streamlit as st
 from core.versemind import run_versemind
-from core.canon import get_canon, save_current_canon
+from core.runtime import get_canon, save_project
 from core.snapshot import record_snapshot
 
 def render():

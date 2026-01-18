@@ -1,61 +1,129 @@
 import streamlit as st
-from core.canon import get_canon, save_current_canon
-from core.rule_decay import list_rules, update_rule
+import json
+from core.runtime import get_canon, save_project
+
 
 def render():
-    st.markdown("### Rules")
-    st.caption("Narrative constraints and invariants")
-
     canon = get_canon()
 
-    # ---------------- CREATE NEW RULE ----------------
-    with st.expander("➕ Add new rule", expanded=True):
-        rule_id = st.text_input("Rule ID", placeholder="e.g. no_time_travel")
-        rule_text = st.text_area(
-            "Rule description",
-            placeholder="Describe the constraint in plain language",
-            height=100
-        )
-
-        severity = st.selectbox("Severity", ["hard", "soft"])
-
-        if st.button("Add Rule"):
-            if not rule_id or not rule_text:
-                st.warning("Rule ID and description are required.")
-            else:
-                canon.add_rule({
-                    "id": rule_id,
-                    "text": rule_text,
-                    "severity": severity,
-                    "conditions": {"all": []},
-                    "constraint": {},
-                })
-                save_current_canon()
-                st.success("Rule added to canon.")
+    st.markdown("### Rules")
+    st.caption("Narrative constraints and enforcement")
 
     st.divider()
 
-    # ---------------- EDIT EXISTING RULES ----------------
-    rules = list_rules(canon)
+    # ============================================================
+    # ADD / EDIT RULE
+    # ============================================================
 
-    if not rules:
+    with st.expander("➕ Add new rule", expanded=True):
+        rule_id = st.text_input(
+            "Rule ID",
+            placeholder="no_death_reversal",
+            help="Stable identifier used internally"
+        )
+
+        rule_text = st.text_area(
+            "Rule description",
+            placeholder="Deaths are supposed to be irreversible",
+        )
+
+        severity = st.selectbox(
+            "Severity",
+            options=["soft", "medium", "hard"],
+            index=2,
+        )
+
+        strength = st.slider(
+            "Rule strength",
+            min_value=0.0,
+            max_value=1.0,
+            value=1.0,
+            step=0.05,
+            help="Decay-sensitive enforcement strength"
+        )
+
+        st.markdown("##### Conditions")
+        st.caption("All conditions must be true for the rule to apply")
+
+        conditions = st.text_area(
+            "Condition keys (one per line)",
+            placeholder="character_is_alive\nwar_is_active",
+            help="Truth keys that must all evaluate to true",
+        )
+
+        st.markdown("##### Constraint")
+        st.caption("Optional structured constraint (advanced)")
+
+        constraint_raw = st.text_area(
+            "Constraint (JSON)",
+            value="{}",
+            help="Advanced constraint structure (leave empty if unused)",
+        )
+
+        if st.button("Add rule"):
+            if not rule_id.strip():
+                st.warning("Rule ID is required.")
+                return
+
+            try:
+                constraint = (
+                    {} if not constraint_raw.strip()
+                    else json.loads(constraint_raw)
+                )
+            except Exception:
+                st.error("Invalid JSON in constraint.")
+                return
+
+            rule = {
+                "id": rule_id.strip(),
+                "text": rule_text.strip(),
+                "severity": severity,
+                "conditions": {
+                    "all": [
+                        c.strip() for c in conditions.splitlines()
+                        if c.strip()
+                    ]
+                },
+                "constraint": constraint,
+                "strength": strength,
+                "overridden": False,
+            }
+
+            canon.add_rule(rule)
+            save_project()
+
+            st.success(f"Rule '{rule_id}' added and saved.")
+
+    st.divider()
+
+    # ============================================================
+    # EXISTING RULES
+    # ============================================================
+
+    if not canon.rules:
         st.info("No rules defined yet.")
         return
 
     st.markdown("#### Existing rules")
 
-    rule_ids = [r.get("id") for r in rules]
-    selected = st.selectbox("Select rule", rule_ids)
+    for idx, rule in enumerate(canon.rules):
+        with st.expander(f"🧩 {rule.get('id', 'unnamed')}"):
+            st.markdown("**Description**")
+            st.write(rule.get("text", ""))
 
-    rule = next(r for r in rules if r.get("id") == selected)
+            st.caption(f"Severity: {rule.get('severity', 'unknown')}")
+            st.caption(f"Strength: {rule.get('strength', 1.0)}")
+            st.caption(f"Overridden: {rule.get('overridden', False)}")
 
-    new_text = st.text_area(
-        "Edit rule description",
-        value=rule.get("text", ""),
-        height=100
-    )
+            st.markdown("**Conditions (all)**")
+            for c in rule.get("conditions", {}).get("all", []):
+                st.code(c)
 
-    if st.button("Update Rule"):
-        update_rule(selected, new_text, canon)
-        save_current_canon()
-        st.success("Rule updated.")
+            st.markdown("**Constraint**")
+            st.code(rule.get("constraint", {}), language="json")
+
+            if st.button("Remove rule", key=f"remove_rule_{idx}"):
+                canon.rules.pop(idx)
+                save_project()
+                st.success("Rule removed.")
+                st.rerun()

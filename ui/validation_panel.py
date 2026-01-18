@@ -1,6 +1,6 @@
 import streamlit as st
 from core.validator import validate_state
-from core.canon import get_canon
+from core.runtime import get_canon, save_project
 
 def render():
     st.markdown("### Validation")

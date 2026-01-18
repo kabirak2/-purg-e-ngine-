@@ -3,29 +3,33 @@ from core.integrity import compute_integrity
 from core.dependency_graph import DependencyGraph
 from core.rule_decay import decay_rules
 from core.config import SAVE_POLICY
-from core.project_store import load_canon, save_canon
+from core.paradox_engine import detect_paradoxes
+
 
 class Canon:
     def __init__(self):
-        # ---------------- CORE (REQUIRED) ----------------
+        # ---------------- CORE ----------------
         self.meta = {
             "title": "",
             "author": "",
-            "version": "0.1"
+            "version": "0.1",
         }
+
         self.truths = {}
         self.rules = []
         self.events = []
 
-        # ---------------- ADVANCED / OPTIONAL ----------------
+        # ---------------- TIMELINE ----------------
+        self.acts = []
+
+        # ---------------- STRUCTURE ----------------
+        self.graph = DependencyGraph()   # ← FIX 1
+
+        # ---------------- OPTIONAL ----------------
         self.event_log = []
         self.snapshots = []
         self.integrity = {}
         self.active_branch = "main"
-        self.graph = DependencyGraph()
-
-        # future-safe optional systems (already discussed)
-        self.intent_log = []
         self.characters = {}
         self.fatigue = 0.0
         self.telemetry = {}
@@ -43,14 +47,17 @@ class Canon:
         self.events.append(event)
 
         # postconditions
-        self.apply_postconditions(event)
+        for t in event.get("postconditions", []):
+            self.truths[t] = True
 
-        # snapshots & integrity (optional but live)
+        # snapshots & integrity
         try:
-            self.snapshots.append(take_snapshot(self, event.get("act", 0)))
+            self.snapshots.append(
+                take_snapshot(self, event.get("act", 0))
+            )
             self.integrity = compute_integrity(self)
         except Exception:
-            pass  # never block event creation
+            pass
 
         # rule decay
         try:
@@ -62,10 +69,6 @@ class Canon:
         for dep in event.get("depends_on", []):
             self.graph.add_dependency(event["id"], dep)
 
-    def apply_postconditions(self, event):
-        for t in event.get("postconditions", []):
-            self.truths[t] = True
-
     # ---------------- LOGGING ----------------
 
     def log_event(self, entry):
@@ -75,16 +78,12 @@ class Canon:
     # ---------------- SERIALIZATION ----------------
 
     def to_dict(self):
-        """
-        NOTHING here is mandatory except core canon.
-        SAVE_POLICY controls what extras persist.
-        """
-
         data = {
             "meta": self.meta,
             "truths": self.truths,
             "rules": self.rules,
             "events": self.events,
+            "acts": self.acts,
         }
 
         if SAVE_POLICY.get("event_log"):
@@ -113,26 +112,40 @@ class Canon:
 
         return data
 
-# ---- UI ADAPTER ----
+    def load_from_dict(self, data: dict):
+        self.meta = data.get("meta", {})
+        self.truths = data.get("truths", {})
+        self.rules = data.get("rules", [])
+        self.events = data.get("events", [])
+        self.acts = data.get("acts", [])        # ← FIX 2
 
-# Simple global canon instance for UI usage
-_CANON_INSTANCE = None
+        self.event_log = data.get("event_log", [])
+        self.snapshots = data.get("snapshots", [])
+        self.integrity = data.get("integrity", {})
+        self.active_branch = data.get("branch", "main")
 
+        if "dependencies" in data:
+            self.graph.from_dict(data["dependencies"])
 
-def get_canon():
-    """
-    Returns the active Canon instance (singleton).
-    """
-    global _CANON_INSTANCE
-    if _CANON_INSTANCE is None:
-        _CANON_INSTANCE = load_canon()
-    return _CANON_INSTANCE
+        self.characters = data.get("characters", {})
+        self.fatigue = data.get("fatigue", 0.0)
+        self.telemetry = data.get("telemetry", {})
 
+    # ---------------- PARADOX ----------------
 
-def save_current_canon():
-    """
-    Persists the active Canon instance to disk.
-    """
-    global _CANON_INSTANCE
-    if _CANON_INSTANCE is not None:
-        save_canon(_CANON_INSTANCE)
+    def detect_paradoxes(self):
+        return detect_paradoxes(self)
+
+    # ---------------- UI / RUNTIME ----------------
+
+    def apply_event(self, event):
+        self.events.append(event)
+
+        for k, v in event.get("sets_truths", {}).items():
+            self.truths[k] = v
+
+        self.event_log.append({
+            "log_id": f"log_{len(self.event_log)+1}",
+            "commit": {"written_to_canon": True},
+            "payload": event,
+        })

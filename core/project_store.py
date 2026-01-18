@@ -1,51 +1,107 @@
-import json
-import os
-
-PROJECTS_DIR = "projects"
-DEFAULT_PROJECT = "default.json"
+from typing import Optional
+from core import filesystem
+from core.canon import Canon
 
 
-def _project_path(name=DEFAULT_PROJECT):
-    os.makedirs(PROJECTS_DIR, exist_ok=True)
-    return os.path.join(PROJECTS_DIR, name)
-
-
-def load_canon(project=DEFAULT_PROJECT):
+class ProjectStore:
     """
-    Loads a Canon instance from disk.
-    Local import is used to avoid circular imports.
+    In-memory authority for the currently loaded project.
+
+    Responsibilities:
+    - Track active project filename
+    - Hold the active Canon instance
+    - Track dirty state (unsaved changes)
     """
-    from core.canon import Canon  # ← LOCAL import (important)
 
-    path = _project_path(project)
-    canon = Canon()
+    def __init__(self):
+        self.active_project: Optional[str] = None
+        self.canon: Canon = Canon()
+        self.dirty: bool = False
 
-    if not os.path.exists(path):
-        return canon
+    # ------------------------------------------------------------------
+    # Project lifecycle
+    # ------------------------------------------------------------------
 
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    def new_project(self, name: str):
+        """
+        Create a new empty project in memory.
+        Does NOT save to disk.
+        """
+        if not name.endswith(".json"):
+            name += ".json"
 
-    canon.meta = data.get("meta", canon.meta)
-    canon.truths = data.get("truths", {})
-    canon.rules = data.get("rules", [])
-    canon.events = data.get("events", [])
+        self.active_project = name
+        self.canon = Canon()
+        self.canon.meta["title"] = name.replace(".json", "")
+        self.dirty = True
 
-    canon.event_log = data.get("event_log", [])
-    canon.snapshots = data.get("snapshots", [])
-    canon.integrity = data.get("integrity", {})
-    canon.characters = data.get("characters", {})
-    canon.fatigue = data.get("fatigue", 0.0)
-    canon.telemetry = data.get("telemetry", {})
+    def open_project(self, filename: str):
+        """
+        Load an existing project from disk and replace memory.
+        """
+        data = filesystem.load_project(filename)
 
-    return canon
+        canon = Canon()
+        canon.load_from_dict(data)
 
+        self.active_project = filename
+        self.canon = canon
+        self.dirty = False
 
-def save_canon(canon, project=DEFAULT_PROJECT):
-    """
-    Saves Canon state to disk.
-    """
-    path = _project_path(project)
+    def reset_project(self):
+        """
+        Reset the current project in memory only.
+        """
+        self.canon = Canon()
+        self.dirty = True
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(canon.to_dict(), f, indent=2)
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def save(self):
+        """
+        Save to the currently active project file.
+        """
+        if not self.active_project:
+            raise RuntimeError("No active project to save")
+
+        filesystem.save_project(
+            self.active_project,
+            self.canon.to_dict()
+        )
+        self.dirty = False
+
+    def save_as(self, filename: str, overwrite: bool = False):
+        """
+        Save the current canon under a new filename.
+        """
+        if not filename.endswith(".json"):
+            filename += ".json"
+
+        if filesystem.project_exists(filename) and not overwrite:
+            raise FileExistsError(filename)
+
+        filesystem.save_project(
+            filename,
+            self.canon.to_dict()
+        )
+
+        self.active_project = filename
+        self.dirty = False
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def list_projects(self):
+        """
+        Return available projects for UI dropdown.
+        """
+        return filesystem.list_projects()
+
+    def mark_dirty(self):
+        """
+        Mark project as having unsaved changes.
+        """
+        self.dirty = True

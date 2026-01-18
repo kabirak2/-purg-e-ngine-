@@ -1,40 +1,65 @@
-def evaluate_condition(cond, context):
-    if "all" in cond:
-        return all(evaluate_condition(c, context) for c in cond["all"])
+# ------------------------------------------------------------
+# CONDITION EVALUATION
+# ------------------------------------------------------------
+
+def evaluate_condition(conditions, canon):
+    """
+    Evaluates rule conditions against canon truths.
+
+    conditions schema:
+    {
+        "all": ["truth_key_1", "truth_key_2"]
+    }
+
+    Missing or empty conditions => always true
+    """
+
+    if not conditions:
+        return True
+
+    all_conditions = conditions.get("all", [])
+
+    for truth_key in all_conditions:
+        if canon.truths.get(truth_key) is not True:
+            return False
+
     return True
 
-def validate_action(action, canon, context):
+
+# ------------------------------------------------------------
+# RULE VALIDATION
+# ------------------------------------------------------------
+
+def validate_action(action, canon):
+    """
+    Validates a single action against canon rules.
+    Returns blocked / warned rule lists.
+    """
+
     blocked = []
     warned = []
 
     for rule in canon.rules:
-        if not evaluate_condition(rule["conditions"], context):
+        # ---------------- conditions ----------------
+        conditions = rule.get("conditions", {})
+        if not evaluate_condition(conditions, canon):
             continue
 
-        constraint = rule["constraint"]
+        constraint = rule.get("constraint", {})
+        if not constraint:
+            continue
+
         severity = rule.get("severity", "hard")
 
-        if (
-            constraint["type"] == "forbid"
-            and constraint["target"] == action["type"]
-            and constraint["value"] == action["value"]
-        ):
-            if severity == "hard":
-                blocked.append(rule)
-            else:
-                warned.append(rule)
+        # ---------------- forbid truth ----------------
+        forbidden = constraint.get("forbid_truth")
 
-        if constraint["type"] == "limit":
-            window = rule.get("temporal", {})
-            acts = window.get("acts")
-            max_events = window.get("max")
+        if forbidden:
+            if isinstance(forbidden, str):
+                forbidden = [forbidden]
 
-            if acts and max_events:
-                recent = [
-                    e for e in canon.events
-                    if abs(e["act"] - context["act"]) <= acts
-                ]
-                if len(recent) >= max_events:
+            for truth_key in forbidden:
+                if action.get("sets_truths", {}).get(truth_key) is True:
                     if severity == "hard":
                         blocked.append(rule)
                     else:
@@ -42,42 +67,38 @@ def validate_action(action, canon, context):
 
     return {
         "blocked": blocked,
-        "warned": warned
+        "warned": warned,
     }
 
-# ---- UI ADAPTERS ----
+
+# ------------------------------------------------------------
+# UI ADAPTER
+# ------------------------------------------------------------
 
 def validate_state(canon=None):
     """
-    UI-facing adapter.
-    Performs a lightweight validation pass over the current canon state.
+    Performs a validation pass over all events in canon.
     """
+
     if canon is None:
         return {
             "status": "ok",
             "blocked": [],
             "warned": [],
-            "message": "No canon state provided"
+            "message": "No canon state provided",
         }
 
     blocked = []
     warned = []
 
-    # Validate each event against rules at its act
     for event in canon.events:
         result = validate_action(
-            action={
-                "type": "event",
-                "value": event.get("name", "")
-            },
+            action=event,
             canon=canon,
-            context={
-                "act": event.get("act", 0)
-            }
         )
 
-        blocked.extend(result.get("blocked", []))
-        warned.extend(result.get("warned", []))
+        blocked.extend(result["blocked"])
+        warned.extend(result["warned"])
 
     status = "ok"
     if blocked:
@@ -88,5 +109,5 @@ def validate_state(canon=None):
     return {
         "status": status,
         "blocked": blocked,
-        "warned": warned
+        "warned": warned,
     }

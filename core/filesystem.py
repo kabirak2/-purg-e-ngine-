@@ -1,42 +1,93 @@
-import os
+from pathlib import Path
 import json
-import shutil
+from typing import List
 
-BASE_DIR = "projects"
+# -------------------------------------------------------------------
+# Configuration
+# -------------------------------------------------------------------
+
+PROJECTS_DIR = Path("projects")
+PROJECTS_DIR.mkdir(exist_ok=True)
 
 
-def save_project(canon_dict):
+# -------------------------------------------------------------------
+# Public API (used by UI / project_store)
+# -------------------------------------------------------------------
+
+def list_projects() -> List[str]:
     """
-    Save canon to disk.
+    Return a sorted list of available project files.
 
-    Rules:
-    - Project title is the ONLY required field
-    - Advanced / optional systems are ignored if missing
-    - Overwrites only if project title matches existing folder
-    - Otherwise creates a forked version
+    Only JSON files inside the projects directory are considered valid.
+    """
+    return sorted(p.name for p in PROJECTS_DIR.glob("*.json"))
+
+
+def load_project(filename: str) -> dict:
+    """
+    Load a project from disk and return the canon dictionary.
+
+    This performs NO validation or mutation.
+    """
+    path = PROJECTS_DIR / filename
+
+    if not path.exists():
+        raise FileNotFoundError(f"Project not found: {filename}")
+
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_project(filename: str, canon_dict: dict) -> None:
+    """
+    Save the given canon dictionary to disk.
+
+    This function:
+    - Does NOT invent filenames
+    - Does NOT fork
+    - Does NOT overwrite silently (UI must decide)
+    - Does NOT validate canon logic
     """
 
-    meta = canon_dict.get("meta", {})
-    title = meta.get("title")
+    if not filename.endswith(".json"):
+        raise ValueError("Project filename must end with .json")
 
-    if not title:
-        raise ValueError("Project title is required")
+    path = PROJECTS_DIR / filename
 
-    os.makedirs(BASE_DIR, exist_ok=True)
+    safe_canon = _sanitize_canon(canon_dict)
 
-    target_path = os.path.join(BASE_DIR, title)
-    canon_path = os.path.join(target_path, "canon.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(safe_canon, f, indent=2)
 
-    # -------- sanitize canon (defensive, non-destructive) --------
-    safe_canon = {
+
+def project_exists(filename: str) -> bool:
+    """
+    Check whether a project file already exists.
+    """
+    return (PROJECTS_DIR / filename).exists()
+
+
+# -------------------------------------------------------------------
+# Internal helpers
+# -------------------------------------------------------------------
+
+def _sanitize_canon(canon_dict: dict) -> dict:
+    """
+    Defensive, non-destructive canon serialization.
+
+    Only persists known stable fields.
+    Optional systems are included if present.
+    """
+
+    safe = {
         "meta": canon_dict.get("meta", {}),
         "truths": canon_dict.get("truths", {}),
         "rules": canon_dict.get("rules", []),
         "events": canon_dict.get("events", []),
     }
 
-    # copy any OPTIONAL keys if present (never required)
-    for optional_key in (
+    # Optional subsystems (never required)
+    for key in (
         "event_log",
         "snapshots",
         "integrity",
@@ -46,58 +97,7 @@ def save_project(canon_dict):
         "fatigue",
         "telemetry",
     ):
-        if optional_key in canon_dict:
-            safe_canon[optional_key] = canon_dict[optional_key]
+        if key in canon_dict:
+            safe[key] = canon_dict[key]
 
-    # -------- Case 1: project does not exist --------
-    if not os.path.exists(target_path):
-        os.makedirs(target_path)
-        _write_canon(canon_path, safe_canon)
-        return target_path, "created"
-
-    # -------- Case 2: project exists → title match --------
-    if os.path.exists(canon_path):
-        try:
-            with open(canon_path, "r") as f:
-                existing = json.load(f)
-        except Exception:
-            existing = {}
-
-        existing_title = existing.get("meta", {}).get("title")
-
-        if existing_title == title:
-            _backup(canon_path)
-            _write_canon(canon_path, safe_canon)
-            return target_path, "overwritten"
-
-    # -------- Case 3: mismatch → fork --------
-    versioned_path = _next_available_path(title)
-    os.makedirs(versioned_path)
-    _write_canon(os.path.join(versioned_path, "canon.json"), safe_canon)
-
-    return versioned_path, "forked"
-
-
-# ---------------- helpers ----------------
-
-def _write_canon(path, canon_dict):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(canon_dict, f, indent=2)
-
-
-def _backup(path):
-    backup_path = path + ".bak"
-    try:
-        shutil.copy(path, backup_path)
-    except Exception:
-        pass  # backups must never block saving
-
-
-def _next_available_path(title):
-    i = 2
-    while True:
-        candidate = f"{title}_v{i}"
-        path = os.path.join(BASE_DIR, candidate)
-        if not os.path.exists(path):
-            return path
-        i += 1
+    return safe

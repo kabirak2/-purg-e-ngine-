@@ -8,15 +8,17 @@ if ROOT not in sys.path:
 import streamlit as st
 from ui.helpers import inject_global_styles
 
-from ui.versemind_panel import render as versemind
+from ui.versemind_panel import render as versemind_render
 from ui.timeline_panel import render as timeline
-from ui.rule_editor import render as rules
+from ui.rule_editor import render as rules_render
 from ui.validation_panel import render as validation
 from ui.analytics_panel import render as analytics
 from ui.debugger_panel import render as debugger
-from ui.canon_panel import render as canon
+from ui.canon_panel import render as canon_render
 from ui.paradox_panel import render as paradox
-from ui.project_panel import render as project
+from ui.project_panel import render as project_render
+from ui.truths_panel import render as truths_render
+from ui.events_panel import render as events_render
 
 def main():
     st.set_page_config(page_title="PURGE Console", layout="centered")
@@ -30,6 +32,8 @@ def main():
         [
             "Project",
             "Rules",
+            "Truths",
+            "Events",
             "VerseMind",
             "Paradox",
             "Debugger",
@@ -42,11 +46,11 @@ def main():
 
 
     if panel == "VerseMind":
-        versemind()
+        versemind_render()
     elif panel == "Timeline":
         timeline()
     elif panel == "Rules":
-        rules()
+        rules_render()
     elif panel == "Validation":
         validation()
     elif panel == "Analytics":
@@ -54,11 +58,15 @@ def main():
     elif panel == "Debugger":
         debugger()
     elif panel == "Canon":
-        canon()
+        canon_render()
     elif panel == "Paradox":
         paradox()
     elif panel == "Project":
-        project()
+        project_render()
+    elif panel == "Truths":
+        truths_render()
+    elif panel == "Events":
+        events_render()
 
 if __name__ == "__main__":
     main()
